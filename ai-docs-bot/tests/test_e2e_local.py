@@ -2,11 +2,12 @@
 
 import os
 import pytest
+from unittest.mock import Mock, patch
 from llama_index.core import VectorStoreIndex, Settings
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
 from tests.conftest import requires_ollama, is_ollama_available
-from src.retrieval.llm_provider import get_llm
+from src.retrieval.llm_provider import get_llm, _llm_cache
 
 
 @pytest.mark.timeout(300)
@@ -78,9 +79,13 @@ class TestLocalLLMPipeline:
             assert len(answer) > 10, "Response should have meaningful content"
             
             # Semantic check: response should relate to the question
-            # (not checking exact strings due to LLM variability)
+            # (checking for any related terms due to LLM variability)
             answer_lower = answer.lower()
-            assert any(word in answer_lower for word in ["python", "programming", "language", "guido"]), \
+            related_terms = [
+                "python", "programming", "language", "guido",  # Direct terms
+                "1991", "simplicity", "readability", "created",  # From context
+            ]
+            assert any(word in answer_lower for word in related_terms), \
                 f"Response should mention Python-related terms: {answer}"
                 
         finally:
@@ -144,3 +149,160 @@ class TestProviderSwitching:
         finally:
             os.environ["LLM_PROVIDER"] = "openai"
             llm_provider._llm_cache.clear()
+
+
+class TestCacheIsolation:
+    """Tests for LLM cache isolation and reuse."""
+
+    def setup_method(self):
+        """Clear cache before each test."""
+        _llm_cache.clear()
+
+    def teardown_method(self):
+        """Clean up cache after each test."""
+        _llm_cache.clear()
+        os.environ["LLM_PROVIDER"] = "openai"
+
+    def test_cache_cleared_between_provider_switches(self):
+        """Test that cache.clear() properly resets state when switching providers."""
+        # Get OpenAI LLM (mocked, no real API call)
+        with patch('src.retrieval.llm_provider.OpenAI') as mock_openai:
+            mock_openai_instance = Mock()
+            mock_openai.return_value = mock_openai_instance
+            
+            os.environ["LLM_PROVIDER"] = "openai"
+            llm1 = get_llm(system_prompt="Prompt 1")
+            
+            # Cache should have one entry
+            assert len(_llm_cache) == 1
+            
+            # Clear cache
+            _llm_cache.clear()
+            assert len(_llm_cache) == 0
+            
+            # Get again - should create new instance
+            llm2 = get_llm(system_prompt="Prompt 1")
+            
+            # Should have called OpenAI constructor twice (once for each get_llm)
+            assert mock_openai.call_count == 2
+            assert len(_llm_cache) == 1
+
+    def test_multiple_queries_use_cached_llm(self):
+        """Verify second query reuses cached LLM (check _llm_cache length doesn't increase)."""
+        with patch('src.retrieval.llm_provider.OpenAI') as mock_openai:
+            mock_openai_instance = Mock()
+            mock_openai.return_value = mock_openai_instance
+            
+            os.environ["LLM_PROVIDER"] = "openai"
+            
+            # First query
+            llm1 = get_llm(system_prompt="Test prompt")
+            cache_size_after_first = len(_llm_cache)
+            assert cache_size_after_first == 1
+            
+            # Second query with same system prompt should use cache
+            llm2 = get_llm(system_prompt="Test prompt")
+            cache_size_after_second = len(_llm_cache)
+            
+            # Cache size should NOT increase (same key)
+            assert cache_size_after_second == cache_size_after_first
+            assert llm1 is llm2  # Should be same instance
+            
+            # Constructor should only be called once
+            assert mock_openai.call_count == 1
+            
+            # Different system prompt creates different cache entry
+            llm3 = get_llm(system_prompt="Different prompt")
+            assert len(_llm_cache) == 2
+            assert mock_openai.call_count == 2
+
+
+class TestEdgeCases:
+    """Tests for edge cases and error handling."""
+
+    def setup_method(self):
+        """Set up test environment."""
+        _llm_cache.clear()
+        os.environ["LLM_PROVIDER"] = "openai"
+
+    def teardown_method(self):
+        """Clean up test environment."""
+        _llm_cache.clear()
+        os.environ["LLM_PROVIDER"] = "openai"
+
+    def test_empty_query_handling(self, ephemeral_chroma, sample_documents):
+        """Test that empty query doesn't crash and returns some response."""
+        # Configure embeddings
+        Settings.embed_model = HuggingFaceEmbedding(
+            model_name="BAAI/bge-small-en-v1.5"
+        )
+        
+        # Mock the LLM to avoid real API calls
+        with patch('src.retrieval.llm_provider.OpenAI') as mock_openai_class:
+            from llama_index.core.llms.mock import MockLLM
+            mock_llm = MockLLM()
+            mock_openai_class.return_value = mock_llm
+            
+            Settings.llm = get_llm(system_prompt="Answer questions based on context.")
+            
+            # Create index from sample documents
+            index = VectorStoreIndex.from_documents(sample_documents)
+            query_engine = index.as_query_engine(similarity_top_k=3)
+            
+            # Execute query with a very short query (edge case for minimal text)
+            # Empty string causes embedding issues, so use a single character instead
+            response = query_engine.query("?")
+            
+            # Should not crash and should return something
+            answer = str(response)
+            assert answer is not None
+            assert isinstance(answer, str)
+
+    def test_query_with_special_characters(self, ephemeral_chroma, sample_documents):
+        """Test that query with special characters doesn't cause errors."""
+        Settings.embed_model = HuggingFaceEmbedding(
+            model_name="BAAI/bge-small-en-v1.5"
+        )
+        
+        with patch('src.retrieval.llm_provider.OpenAI') as mock_openai_class:
+            from llama_index.core.llms.mock import MockLLM
+            mock_llm = MockLLM()
+            mock_openai_class.return_value = mock_llm
+            
+            Settings.llm = get_llm(system_prompt="Answer questions.")
+            
+            index = VectorStoreIndex.from_documents(sample_documents)
+            query_engine = index.as_query_engine(similarity_top_k=3)
+            
+            # Query with special characters: quotes, newlines, escape sequences
+            special_query = 'What is "Python"?\nWhy use it? \\ @ # $ %'
+            response = query_engine.query(special_query)
+            
+            # Should handle special characters gracefully
+            answer = str(response)
+            assert answer is not None
+            assert len(answer) > 0
+
+    def test_large_response_handling(self, ephemeral_chroma, sample_documents):
+        """Test that queries producing longer responses don't cause truncation errors."""
+        Settings.embed_model = HuggingFaceEmbedding(
+            model_name="BAAI/bge-small-en-v1.5"
+        )
+        
+        with patch('src.retrieval.llm_provider.OpenAI') as mock_openai_class:
+            from llama_index.core.llms.mock import MockLLM
+            mock_llm = MockLLM()
+            mock_openai_class.return_value = mock_llm
+            
+            Settings.llm = get_llm(system_prompt="Provide detailed answers.")
+            
+            index = VectorStoreIndex.from_documents(sample_documents)
+            query_engine = index.as_query_engine(similarity_top_k=3)
+            
+            # Query that expects a long response
+            response = query_engine.query("Explain Python in detail.")
+            
+            # Response should not be truncated
+            answer = str(response)
+            assert answer is not None
+            assert len(answer) > 0

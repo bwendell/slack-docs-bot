@@ -75,7 +75,13 @@ def get_llm(system_prompt: str | None = None) -> OpenAI | Ollama:
             models = tags_data.get("models", [])
             model_names = [m.get("name", "") for m in models]
             
-            if not model_names or model not in model_names:
+            # Check for exact match or match with :latest suffix
+            model_found = (
+                model in model_names or 
+                f"{model}:latest" in model_names
+            )
+            
+            if not model_names or not model_found:
                 raise ConnectionError(
                     f"Model '{model}' not found in Ollama. "
                     f"Available models: {', '.join(model_names) if model_names else 'none'}. "

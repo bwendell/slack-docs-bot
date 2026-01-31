@@ -1,0 +1,58 @@
+# Docker Compose for ai-docs-bot development environment
+#
+# Usage:
+#   docker compose up -d           # Start all services
+#   docker compose up -d ollama    # Start just Ollama
+#   docker compose logs -f ollama  # View Ollama logs
+#   docker compose down            # Stop all services
+#
+# After starting Ollama, pull a model:
+#   docker compose exec ollama ollama pull llama3.2
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ai-docs-bot-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      # Persist models between container restarts
+      - ollama_models:/root/.ollama
+    environment:
+      # GPU support (uncomment for NVIDIA GPU)
+      # - NVIDIA_VISIBLE_DEVICES=all
+      - OLLAMA_HOST=0.0.0.0
+    # Uncomment for NVIDIA GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # Optional: ChromaDB for vector storage
+  # Uncomment if you want containerized ChromaDB instead of local storage
+  # chromadb:
+  #   image: chromadb/chroma:latest
+  #   container_name: ai-docs-bot-chroma
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - chroma_data:/chroma/chroma
+  #   environment:
+  #     - ANONYMIZED_TELEMETRY=false
+  #   restart: unless-stopped
+
+volumes:
+  ollama_models:
+    name: ai-docs-bot-ollama-models
+  # chroma_data:
+  #   name: ai-docs-bot-chroma-data
