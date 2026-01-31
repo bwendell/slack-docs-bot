@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-docs-bot"
+version = "0.1.0"
+description = "RAG-powered Slack bot for documentation Q&A"
+authors = [{name = "OpenCode", email = "dev@opencode.ai"}]
+requires-python = ">=3.11"
+dependencies = [
+    "llama-index-core>=0.10.0",
+    "llama-index-llms-openai>=0.1.0",
+    "llama-index-embeddings-huggingface>=0.1.0",
+    "llama-index-vector-stores-chroma>=0.1.0",
+    "chromadb>=0.4.0",
+    "slack-bolt>=1.18.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0"]

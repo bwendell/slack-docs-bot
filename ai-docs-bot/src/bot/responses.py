@@ -1,0 +1,1 @@
+"""Bot response formatting utilities."""
