@@ -1,6 +1,7 @@
 # LlamaIndex core and integrations
 llama-index-core>=0.10.0
 llama-index-llms-openai>=0.1.0
+llama-index-llms-ollama>=0.1.0
 llama-index-embeddings-huggingface>=0.1.0
 llama-index-vector-stores-chroma>=0.1.0
 llama-index-readers-web>=0.1.0
@@ -31,3 +32,4 @@ gitpython>=3.1.0
 
 # Testing
 pytest>=8.0.0
+pytest-timeout>=2.0.0

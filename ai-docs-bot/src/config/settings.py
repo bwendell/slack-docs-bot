@@ -14,6 +14,11 @@ class Settings:
     DOCS_SITEMAP_URL: str
     GITHUB_REPO_URL: str
     CHROMA_PERSIST_DIR: str
+    LLM_PROVIDER: str
+    OLLAMA_MODEL: str
+    OLLAMA_BASE_URL: str
+    OLLAMA_TIMEOUT: float
+    OLLAMA_CONTEXT_WINDOW: int
 
 def get_settings() -> Settings:
     return Settings(
@@ -25,4 +30,9 @@ def get_settings() -> Settings:
         DOCS_SITEMAP_URL=os.getenv("DOCS_SITEMAP_URL", ""),
         GITHUB_REPO_URL=os.getenv("GITHUB_REPO_URL", ""),
         CHROMA_PERSIST_DIR=os.getenv("CHROMA_PERSIST_DIR", "./data/chroma_db"),
+        LLM_PROVIDER=os.getenv("LLM_PROVIDER", "openai"),
+        OLLAMA_MODEL=os.getenv("OLLAMA_MODEL", "llama3.2"),
+        OLLAMA_BASE_URL=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+        OLLAMA_TIMEOUT=float(os.getenv("OLLAMA_TIMEOUT", "120.0")),
+        OLLAMA_CONTEXT_WINDOW=int(os.getenv("OLLAMA_CONTEXT_WINDOW", "8192")),
     )
